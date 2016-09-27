@@ -12,52 +12,69 @@ var BASE_PORT = 22222
     var port = BASE_PORT++
 
     var wsPath = '/custom/relay/path'
-    var server = new WebSocketServer({
+    var ted = new WebSocketServer({
       port: port,
       path: wsPath
     })
 
     var serverURL = 'http://127.0.0.1:' + port + path.join('/', wsPath)
-    var state = {}
-
-    var client = new WSClient({
+    var bill = new WSClient({
       wireOpts: { plaintext: true },
       url: serverURL + '?from=bill'
     })
 
-    var expected = toBuffer({
+    var toTed = toBuffer({
       dear: 'ted',
       contents: 'sixmeg'.repeat(1000000),
       seq: 1
     })
 
-    client.send('ted', expected, function () {
+    bill.send('ted', toTed, function () {
       t.pass('delivery confirmed')
       finish()
     })
 
-    var togo = 2
-    server.on('message', function (actual, from) {
-      t.same(actual, expected, 'received')
+    var toBill = toBuffer({
+      dear: 'bill',
+      contents: 'sixmeg'.repeat(1000000),
+      seq: 1
+    })
+
+    ted.send('bill', toBill, function () {
+      t.pass('delivery confirmed')
+      finish()
+    })
+
+    ted.on('message', function (actual, from) {
+      t.same(actual, toTed, 'received')
       t.equal(from, 'bill')
-      server.ack(JSON.parse(actual).seq, from)
+      ted.ack(JSON.parse(actual).seq, from)
+      finish()
+    })
+
+    bill.on('message', function (actual, from) {
+      t.same(actual, toBill, 'received')
+      t.equal(from, 'ted')
+      ted.ack(JSON.parse(actual).seq, from)
       finish()
     })
 
     if (!goodConnection) {
       setInterval(function () {
         // randomly drop connections
-        client._socket.end()
+        bill._socket.end()
       }, 100).unref()
     }
+
+    var togo = 4 // 2 people * (send + receive)
 
     function finish (err) {
       if (err) throw err
       if (--togo) return
 
       t.end()
-      client.destroy()
-      server.destroy()
+      bill.destroy()
+      ted.destroy()
     }
   })
 })

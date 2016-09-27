@@ -10,17 +10,26 @@ const debug = require('debug')('tradle:ws:client')
 const Wire = require('@tradle/wire')
 const createBackoff = require('backoff')
 const utils = require('./utils')
+const createManager = require('./manager')
 const schema = protobufs.schema
 
 module.exports = Client
 
 function Client (opts) {
+  const self = this
+
   EventEmitter.call(this)
+
   this._opts = opts
   this._openSocket = this._openSocket.bind(this)
-  this._callbacks = {}
+  this._manager = createManager()
+  this._manager._createWire = function () {
+    return self._createWire.apply(self, arguments)
+  }
+
+  reemit(this._manager, this, createManager.WIRE_EVENTS)
+
   this._queues = []
-  this._wires = {}
   this._backoff = opts.backoff || createBackoff.exponential({
     initialDelay: 1000,
     maxDelay: 10000
@@ -32,24 +41,32 @@ function Client (opts) {
 
 util.inherits(Client, EventEmitter)
 
-Client.prototype.send = function (to, msg, cb) {
-  const wire = this._getWire(to)
-  wire.send(toBuffer(msg))
-
-  if (!this._queues[to]) this._queues[to] = []
-  this._queues[to].push(arguments)
-
-  if (!this._callbacks[to]) this._callbacks[to] = {}
-
-  const seq = Buffer.isBuffer(msg) ? JSON.parse(msg).seq : msg.seq
-  this._callbacks[to][seq] = cb
+/**
+ * Overwrite this
+ */
+Client.prototype._createWire = function () {
+  return new Wire({ plaintext: true })
 }
 
-Client.prototype._getWire = function (recipient) {
-  const self = this
-  if (this._wires[recipient]) return this._wires[recipient]
+Client.prototype.send = function (recipient, msg, cb) {
+  if (!this._manager.hasWire(recipient)) {
+    this._setupWire(recipient)
+  }
 
-  const wire = this._wires[recipient] = new Wire(this._opts.wireOpts)
+  this._manager.send(recipient, msg, cb)
+
+  if (!this._queues[recipient]) this._queues[recipient] = []
+  this._queues[recipient].push(arguments)
+}
+
+Client.prototype.ack = function (recipient, msg) {
+  const seq = msg.seq || seq
+  const wire = this._wires[recipient]
+  if (wire) return wire.ack(seq)
+}
+
+Client.prototype._setupWire = function (recipient) {
+  const wire = this._manager.wire(recipient)
   pump(
     wire,
     utils.encoder(recipient),
@@ -57,25 +74,6 @@ Client.prototype._getWire = function (recipient) {
     utils.decoder(recipient),
     wire
   )
-
-  wire.on('ack', function (ack) {
-    const cbs = self._callbacks[recipient]
-    const cb = cbs && cbs[ack]
-    if (!cb) return
-
-    delete self._callbacks[ack]
-    cb()
-  })
-
-  ;['request', 'message', 'handshake', 'ack', 'error'].forEach(function (event) {
-    wire.on(event, function (data) {
-      if (self._destroyed || self._destroying) return
-
-      self.emit(event, data, recipient)
-    })
-  })
-
-  return wire
 }
 
 Client.prototype._debug = function () {
@@ -102,14 +100,7 @@ Client.prototype._openSocket = function () {
     self._backoff.backoff()
   })
 
-  // clear callbacks and queues,
-  // then requeue
-  for (var recipient in this._wires) {
-    this._wires[recipient].end()
-  }
-
-  this._wires = {}
-  this._callbacks = {}
+  this._manager.reset()
   for (var recipient in this._queues) {
     var q = this._queues[recipient].slice()
     this._queues[recipient].length = 0
