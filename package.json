@@ -1,0 +1,26 @@
+{
+  "name": "@tradle/ws",
+  "version": "1.0.0",
+  "description": "ws client/server with @tradle/wire",
+  "main": "index.js",
+  "scripts": {
+    "test": "node test"
+  },
+  "keywords": [],
+  "author": "Mark Vayngrib <mark@tradle.io> (http://github.com/mvayngrib)",
+  "license": "MIT",
+  "dependencies": {
+    "@tradle/wire": "github:tradle/wire",
+    "backoff": "^2.5.0",
+    "debug": "^2.2.0",
+    "end-of-stream": "^1.1.0",
+    "pump": "^1.0.1",
+    "re-emitter": "^1.1.3",
+    "sendy-protobufs": "github:tradle/sendy-protobufs",
+    "through2": "^2.0.1",
+    "websocket-stream": "^3.3.0"
+  },
+  "devDependencies": {
+    "tape": "^4.6.0"
+  }
+}
