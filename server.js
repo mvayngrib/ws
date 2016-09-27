@@ -10,7 +10,7 @@ const Wire = require('@tradle/wire')
 const utils = require('./utils')
 const DEFAULT_WIRE_OPTS = { plaintext: true }
 
-module.exports = function (opts) {
+module.exports = function createServer (opts) {
   const wsServer = websocket.createServer(opts, onconnection)
   const streams = {}
   const wires = {}
