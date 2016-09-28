@@ -22,5 +22,8 @@
   },
   "devDependencies": {
     "tape": "^4.6.0"
+  },
+  "browser": {
+    "./server.js": false
   }
 }

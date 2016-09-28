@@ -1,6 +1,7 @@
 const EventEmitter = require('events').EventEmitter
 const eos = require('end-of-stream')
 const debug = require('debug')('tradle:ws:manager')
+const utils = require('./utils')
 const noop = function () {}
 const WIRE_EVENTS = ['request', 'message', 'handshake', 'ack', 'error']
 
@@ -13,8 +14,8 @@ function createManager (opts) {
   const ackCache = {}
   var wires = {}
   var callbacks = {}
-  var closing
-  var closed
+  var destroying
+  var destroyed
 
   const manager = new EventEmitter()
   manager._read = function () {}
@@ -38,9 +39,9 @@ function createManager (opts) {
     const wire = wires[recipient]
     eos(wire, function () {
       delete wires[recipient]
-      if (!closed && closing && Object.keys(wires).length === 0) {
-        closed = true
-        manager.emit('close')
+      if (!destroyed && destroying && Object.keys(wires).length === 0) {
+        destroyed = true
+        manager.emit('destroy')
       }
     })
 
@@ -55,7 +56,7 @@ function createManager (opts) {
 
     WIRE_EVENTS.forEach(function (event) {
       wire.on(event, function (data) {
-        if (closing || closed) return
+        if (destroying || destroyed) return
 
         manager.emit(event, data, recipient)
       })
@@ -78,21 +79,26 @@ function createManager (opts) {
 
   manager.send = function (recipient, msg, cb) {
     const wire = manager.wire(recipient)
-    wire.send(toBuffer(msg))
+    const buf = toBuffer(msg)
+    wire.send(buf)
     if (!callbacks[recipient]) callbacks[recipient] = {}
 
-    const seq = Buffer.isBuffer(msg) ? JSON.parse(msg).seq : msg.seq
+    const seq = Buffer.isBuffer(msg) ? utils.seq(buf) : msg.seq
     callbacks[recipient][seq] = cb
   }
 
-  manager.close = function (cb) {
-    if (closed) return process.nextTick(cb)
+  manager.destroy = function (cb) {
+    if (destroyed) {
+      if (cb) process.nextTick(cb)
 
-    closing = true
-    manager.once('close', cb)
+      return
+    }
+
+    destroying = true
+    if (cb) manager.once('destroy', cb)
   }
 
-  manager.ack = function (msg, recipient) {
+  manager.ack = function (recipient, msg) {
     const seq = msg.seq || msg
     if (typeof seq !== 'number') throw new Error('invalid seq')
 
@@ -115,7 +121,15 @@ function increasingNum (a, b) {
 }
 
 function toBuffer (obj) {
+  if (
+    obj instanceof Uint8Array ||
+    obj instanceof ArrayBuffer ||
+    typeof obj === 'string'
+  ) {
+    return new Buffer(obj)
+  }
+
   if (Buffer.isBuffer(obj)) return obj
-  if (typeof obj === 'string') return new Buffer(obj)
+
   return new Buffer(JSON.stringify(obj))
 }

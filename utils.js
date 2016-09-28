@@ -19,3 +19,12 @@ exports.decoder = function decoder () {
     cb(null, result.data)
   })
 }
+
+// hack for now
+exports.seq = function (buf) {
+  try {
+    return JSON.parse(buf).seq
+  } catch (err) {
+    return Number(/\"_n\":(\d+)/.exec(buf)[1])
+  }
+}

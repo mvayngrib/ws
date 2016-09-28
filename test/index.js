@@ -48,14 +48,14 @@ var BASE_PORT = 22222
     ted.on('message', function (actual, from) {
       t.same(actual, toTed, 'received')
       t.equal(from, 'bill')
-      ted.ack(JSON.parse(actual).seq, from)
+      ted.ack(from, JSON.parse(actual).seq)
       finish()
     })
 
     bill.on('message', function (actual, from) {
       t.same(actual, toBill, 'received')
       t.equal(from, 'ted')
-      ted.ack(JSON.parse(actual).seq, from)
+      ted.ack(from, JSON.parse(actual).seq)
       finish()
     })
 

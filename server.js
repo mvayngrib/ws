@@ -39,12 +39,13 @@ module.exports = function createServer (opts) {
     if (closed) throw new Error('already closed')
 
     closed = true
-    manager.close()
+    manager.destroy()
     wsServer.close(cb)
   }
 
   ee.destroy = wsServer.close.bind(wsServer)
 
+  wsServer.once('close', ee.close)
   return ee
 
   function onconnection (stream) {

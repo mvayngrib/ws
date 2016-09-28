@@ -2,7 +2,7 @@
 const EventEmitter = require('events').EventEmitter
 const util = require('util')
 const eos = require('end-of-stream')
-const ws = require('websocket-stream')
+const ws = require('websocket-stream/stream')
 const pump = require('pump')
 const reemit = require('re-emitter')
 const protobufs = require('sendy-protobufs').ws
@@ -19,8 +19,12 @@ function Client (opts) {
   const self = this
 
   EventEmitter.call(this)
+  if (typeof opts === 'string') {
+    opts = { url: opts }
+  }
 
   this._opts = opts
+  this._url = opts.url
   this._openSocket = this._openSocket.bind(this)
   this._manager = createManager()
   this._manager._createWire = function () {
@@ -60,9 +64,7 @@ Client.prototype.send = function (recipient, msg, cb) {
 }
 
 Client.prototype.ack = function (recipient, msg) {
-  const seq = msg.seq || seq
-  const wire = this._wires[recipient]
-  if (wire) return wire.ack(seq)
+  this._manager.ack(recipient, msg)
 }
 
 Client.prototype._setupWire = function (recipient) {
@@ -78,7 +80,7 @@ Client.prototype._setupWire = function (recipient) {
 
 Client.prototype._debug = function () {
   var args = [].slice.call(arguments)
-  args.unshift(this._opts.url)
+  args.unshift(this._url)
   return debug.apply(null, arguments)
 }
 
@@ -86,7 +88,12 @@ Client.prototype._openSocket = function () {
   const self = this
   if (this._socket) this._debug('reconnecting')
 
-  this._socket = ws(this._opts.url)
+  this._debug('connecting to ' + this._url)
+  this._socket = ws(this._url)
+  this._socket.once('connect', function () {
+    self.emit('connect')
+  })
+
   eos(this._socket, function () {
     if (self._destroyed) return
     if (self._destroying) {
@@ -98,6 +105,7 @@ Client.prototype._openSocket = function () {
 
     debug('backing off before reconnecting')
     self._backoff.backoff()
+    self.emit('disconnect')
   })
 
   this._manager.reset()
@@ -116,11 +124,6 @@ Client.prototype.destroy = function (cb) {
   this._destroying = true
   if (cb) this.once('destroy', cb)
 
+  this._manager.destroy()
   this._socket.end()
-}
-
-function toBuffer (obj) {
-  if (Buffer.isBuffer(obj)) return obj
-  if (typeof obj === 'string') return new Buffer(obj)
-  return new Buffer(JSON.stringify(obj))
 }
