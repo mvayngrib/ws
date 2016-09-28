@@ -1,22 +1,22 @@
 const through = require('through2')
 const protobufs = require('sendy-protobufs').ws
+const extend = require('xtend/mutable')
 const schema = protobufs.schema
 
-exports.encoder = function encoder (recipient) {
+exports.encoder = function encoder (opts) {
   return through(function (data, enc, cb) {
-    var packet = protobufs.encode(schema.Packet, {
-      to: recipient,
-      data: data
-    })
-
+    console.log('encoding')
+    var props = extend({ data: data }, opts)
+    var packet = protobufs.encode(schema.Packet, props)
     cb(null, packet)
   })
 }
 
 exports.decoder = function decoder () {
-  return through(function (data, enc, cb) {
+  return through.obj(function (data, enc, cb) {
+    console.log('decoding')
     var result = protobufs.decode(data)
-    cb(null, result.data)
+    cb(null, result)
   })
 }
 

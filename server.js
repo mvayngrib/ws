@@ -6,7 +6,9 @@ const eos = require('end-of-stream')
 const pump = require('pump')
 const websocket = require('websocket-stream')
 const reemit = require('re-emitter')
+const through = require('through2')
 const debug = require('debug')('tradle:ws:server')
+// const duplexify = require('duplexify')
 const Wire = require('@tradle/wire')
 const utils = require('./utils')
 const createManager = require('./manager')
@@ -15,6 +17,7 @@ const DEFAULT_WIRE_OPTS = { plaintext: true }
 module.exports = function createServer (opts) {
   const wsServer = websocket.createServer(opts, onconnection)
   const streams = {}
+  const proxies = {}
   const manager = createManager()
   const ee = new EventEmitter()
 
@@ -25,8 +28,11 @@ module.exports = function createServer (opts) {
     return new Wire({ plaintext: true })
   }
 
-  manager._createWire = function () {
-    return ee._createWire.apply(ee, arguments)
+  manager._createWire = function (recipient) {
+    const wire = ee._createWire(recipient)
+    wire._debugId = 'server-wire-' + wire._debugId
+    wire.cork()
+    return wire
   }
 
   ee.hasClient = function (from) {
@@ -50,6 +56,7 @@ module.exports = function createServer (opts) {
 
   function onconnection (stream) {
     stream.on('error', function () {
+      debug('stream experienced error', err)
       stream.end()
     })
 
@@ -68,16 +75,19 @@ module.exports = function createServer (opts) {
 
     debug(`${from} connected`)
     streams[from] = stream
-
-    const wire = manager.wire(from).resume()
+    const wire = manager.wire(from)
     pump(
-      wire,
-      utils.encoder(from),
       stream,
-      utils.decoder(from),
+      utils.decoder(),
+      takeData(),
       wire,
+      utils.encoder({ from: opts.identifier }),
+      stream,
       function (err) {
-        if (err) stream.end()
+        if (err) {
+          debug('stream ended with error', err)
+          stream.end()
+        }
 
         delete streams[from]
 
@@ -90,7 +100,15 @@ module.exports = function createServer (opts) {
       }
     )
 
+    wire.uncork()
+    wire.resume()
     reemit(manager, ee, createManager.WIRE_EVENTS)
     ee.emit('connect', from)
   }
+}
+
+function takeData () {
+  return through.obj(function (packet, enc, cb) {
+    cb(null, packet.data)
+  })
 }

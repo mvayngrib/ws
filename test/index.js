@@ -6,7 +6,7 @@ var WSClient = require('../client')
 var strings = require('./fixtures/strings')
 var BASE_PORT = 22222
 
-;[true, false].forEach(function (goodConnection) {
+;[false].forEach(function (goodConnection) {
   test(goodConnection ? 'good connection' : 'bad connection', function (t) {
     t.timeoutAfter(90000)
     var port = BASE_PORT++
@@ -14,7 +14,8 @@ var BASE_PORT = 22222
     var wsPath = '/custom/relay/path'
     var ted = new WebSocketServer({
       port: port,
-      path: wsPath
+      path: wsPath,
+      identifier: 'ted'
     })
 
     var serverURL = 'http://127.0.0.1:' + port + path.join('/', wsPath)
@@ -72,8 +73,10 @@ var BASE_PORT = 22222
       if (--togo) {
         // kill bill
         if (!goodConnection) {
-          console.log('killing bill')
-          bill._socket.end()
+          if (bill._socket) {
+            console.log('killing bill')
+            bill._socket.end()
+          }
         }
 
         return
@@ -89,3 +92,8 @@ var BASE_PORT = 22222
 function toBuffer (obj) {
   return new Buffer(JSON.stringify(obj))
 }
+
+process.on('uncaughtException', function (err) {
+  console.error(err)
+  process.exit(1)
+})

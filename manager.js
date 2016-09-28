@@ -1,6 +1,7 @@
 const EventEmitter = require('events').EventEmitter
 const eos = require('end-of-stream')
 const debug = require('debug')('tradle:ws:manager')
+const pump = require('pump')
 const utils = require('./utils')
 const noop = function () {}
 const WIRE_EVENTS = ['request', 'message', 'handshake', 'ack', 'error']
@@ -23,19 +24,13 @@ function createManager (opts) {
   manager.reset = function () {
     // don't reset ackCache
     for (var recipient in wires) {
-      wires[recipient].end()
+      wires[recipient].destroy()
     }
 
     callbacks = {}
     wires = {}
-
-    var qcopy = queues
-    queues = {}
-    for (var recipient in qcopy) {
-      var q = qcopy[recipient]
-      for (var i = 0; i < q.length; i++) {
-        manager.send.apply(manager, q[i])
-      }
+    for (var recipient in queues) {
+      resendQueue(recipient)
     }
   }
 
@@ -49,11 +44,14 @@ function createManager (opts) {
     const wire = wires[recipient] = manager._createWire(recipient)
     wire.setMaxListeners(0)
 
-    eos(wire, function () {
+    eos(wire, function (err) {
+      debug(recipient + ' wire died', err)
       delete wires[recipient]
       if (!destroyed && destroying && Object.keys(wires).length === 0) {
         destroyed = true
         manager.emit('destroy')
+      } else {
+        resendQueue(recipient)
       }
     })
 
@@ -97,6 +95,7 @@ function createManager (opts) {
     const wire = manager.wire(recipient)
     const buf = toBuffer(msg)
     wire.send(buf)
+
     if (!callbacks[recipient]) callbacks[recipient] = {}
 
     const seq = Buffer.isBuffer(msg) ? utils.seq(buf) : msg.seq
@@ -115,6 +114,10 @@ function createManager (opts) {
     }
 
     destroying = true
+    for (var recipient in wires) {
+      wires[recipient].destroy()
+    }
+
     if (cb) manager.once('destroy', cb)
   }
 
@@ -134,6 +137,17 @@ function createManager (opts) {
   }
 
   return manager
+
+  function resendQueue (recipient) {
+    var q = queues[recipient]
+    if (!(q &&q.length)) return
+
+    queues[recipient] = []
+    debug('resending to ' + recipient)
+    for (var i = 0; i < q.length; i++) {
+      manager.send.apply(manager, q[i])
+    }
+  }
 }
 
 function increasingNum (a, b) {
