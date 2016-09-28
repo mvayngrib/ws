@@ -30,7 +30,7 @@ var BASE_PORT = 22222
     })
 
     bill.send('ted', toTed, function () {
-      t.pass('delivery confirmed')
+      t.pass('bill->ted delivery confirmed')
       finish()
     })
 
@@ -41,36 +41,43 @@ var BASE_PORT = 22222
     })
 
     ted.send('bill', toBill, function () {
-      t.pass('delivery confirmed')
+      t.pass('ted->bill delivery confirmed')
+      finish()
+    })
+
+    ted.once('message', function (actual, from) {
+      t.same(actual, toTed, 'ted received')
+      t.equal(from, 'bill')
       finish()
     })
 
     ted.on('message', function (actual, from) {
-      t.same(actual, toTed, 'received')
-      t.equal(from, 'bill')
       ted.ack(from, JSON.parse(actual).seq)
+    })
+
+    bill.once('message', function (actual, from) {
+      t.same(actual, toBill, 'bill received')
+      t.equal(from, 'ted')
       finish()
     })
 
     bill.on('message', function (actual, from) {
-      t.same(actual, toBill, 'received')
-      t.equal(from, 'ted')
-      ted.ack(from, JSON.parse(actual).seq)
-      finish()
+      bill.ack(from, JSON.parse(actual).seq)
     })
-
-    if (!goodConnection) {
-      setInterval(function () {
-        // randomly drop connections
-        bill._socket.end()
-      }, 100).unref()
-    }
 
     var togo = 4 // 2 people * (send + receive)
 
     function finish (err) {
       if (err) throw err
-      if (--togo) return
+      if (--togo) {
+        // kill bill
+        if (!goodConnection) {
+          console.log('killing bill')
+          bill._socket.end()
+        }
+
+        return
+      }
 
       t.end()
       bill.destroy()

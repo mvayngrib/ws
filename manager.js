@@ -14,6 +14,7 @@ function createManager (opts) {
   const ackCache = {}
   var wires = {}
   var callbacks = {}
+  var queues = {}
   var destroying
   var destroyed
 
@@ -27,6 +28,15 @@ function createManager (opts) {
 
     callbacks = {}
     wires = {}
+
+    var qcopy = queues
+    queues = {}
+    for (var recipient in qcopy) {
+      var q = qcopy[recipient]
+      for (var i = 0; i < q.length; i++) {
+        manager.send.apply(manager, q[i])
+      }
+    }
   }
 
   manager.hasWire = function (recipient) {
@@ -34,9 +44,11 @@ function createManager (opts) {
   }
 
   manager.wire = function (recipient) {
-    if (!wires[recipient]) wires[recipient] = manager._createWire(recipient)
+    if (wires[recipient]) return wires[recipient]
 
-    const wire = wires[recipient]
+    const wire = wires[recipient] = manager._createWire(recipient)
+    wire.setMaxListeners(0)
+
     eos(wire, function () {
       delete wires[recipient]
       if (!destroyed && destroying && Object.keys(wires).length === 0) {
@@ -51,6 +63,10 @@ function createManager (opts) {
       if (!cb) return
 
       delete cbs[ack]
+      const args = cb._wsManagerArgs
+      const idx = queues[recipient] ? queues[recipient].indexOf(args) : -1
+      if (idx !== -1) queues[recipient].splice(idx, 1)
+
       cb()
     })
 
@@ -65,7 +81,7 @@ function createManager (opts) {
     const acks = ackCache[recipient]
     if (acks) {
       Object.keys(acks).sort(increasingNum).forEach(function (seq) {
-        manager.ack(seq, recipient)
+        manager.ack(recipient, seq)
       })
     }
 
@@ -85,6 +101,10 @@ function createManager (opts) {
 
     const seq = Buffer.isBuffer(msg) ? utils.seq(buf) : msg.seq
     callbacks[recipient][seq] = cb
+    if (!queues[recipient]) queues[recipient] = []
+
+    cb._wsManagerArgs = arguments
+    queues[recipient].push(arguments)
   }
 
   manager.destroy = function (cb) {

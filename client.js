@@ -33,9 +33,8 @@ function Client (opts) {
 
   reemit(this._manager, this, createManager.WIRE_EVENTS)
 
-  this._queues = []
   this._backoff = opts.backoff || createBackoff.exponential({
-    initialDelay: 1000,
+    initialDelay: 200,
     maxDelay: 10000
   })
 
@@ -53,14 +52,12 @@ Client.prototype._createWire = function () {
 }
 
 Client.prototype.send = function (recipient, msg, cb) {
+  var self = this
   if (!this._manager.hasWire(recipient)) {
     this._setupWire(recipient)
   }
 
   this._manager.send(recipient, msg, cb)
-
-  if (!this._queues[recipient]) this._queues[recipient] = []
-  this._queues[recipient].push(arguments)
 }
 
 Client.prototype.ack = function (recipient, msg) {
@@ -68,13 +65,16 @@ Client.prototype.ack = function (recipient, msg) {
 }
 
 Client.prototype._setupWire = function (recipient) {
-  const wire = this._manager.wire(recipient)
+  const wire = this._manager.wire(recipient).resume()
   pump(
     wire,
     utils.encoder(recipient),
     this._socket,
     utils.decoder(recipient),
-    wire
+    wire,
+    function (err) {
+      if (err) wire.end()
+    }
   )
 }
 
@@ -90,6 +90,10 @@ Client.prototype._openSocket = function () {
 
   this._debug('connecting to ' + this._url)
   this._socket = ws(this._url)
+  this._socket.on('error', function () {
+    self._socket.end()
+  })
+
   this._socket.once('connect', function () {
     self.emit('connect')
   })
@@ -109,13 +113,6 @@ Client.prototype._openSocket = function () {
   })
 
   this._manager.reset()
-  for (var recipient in this._queues) {
-    var q = this._queues[recipient].slice()
-    this._queues[recipient].length = 0
-    for (var i = 0; i < q.length; i++) {
-      this.send.apply(this, q[i])
-    }
-  }
 }
 
 Client.prototype.destroy = function (cb) {

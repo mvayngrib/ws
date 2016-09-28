@@ -49,6 +49,10 @@ module.exports = function createServer (opts) {
   return ee
 
   function onconnection (stream) {
+    stream.on('error', function () {
+      stream.end()
+    })
+
     if (closed) {
       debug('already closed, terminating incoming connection')
       return stream.end()
@@ -65,13 +69,13 @@ module.exports = function createServer (opts) {
     debug(`${from} connected`)
     streams[from] = stream
 
-    const wire = manager.wire(from)
+    const wire = manager.wire(from).resume()
     pump(
-      stream,
-      utils.decoder(from),
       wire,
       utils.encoder(from),
       stream,
+      utils.decoder(from),
+      wire,
       function (err) {
         if (err) stream.end()
 
