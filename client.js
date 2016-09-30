@@ -32,7 +32,12 @@ function Client (opts) {
   this._manager = createManager()
   this._manager._createWire = function (recipient) {
     const wire = self._createWire(recipient)
-    if (!self._socket) wire.cork()
+    if (self._socket) {
+      self._connectWire(recipient, wire)
+    } else {
+      wire.cork()
+    }
+
     return wire
   }
 
@@ -95,19 +100,22 @@ Client.prototype._setStream = function (stream) {
 
   const wires = this._manager.wires()
   Object.keys(wires).forEach(function (recipient) {
-    const wire = wires[recipient]
-    pump(
-      wire,
-      utils.encoder({ to: recipient }),
-      stream
-      // ,
-      // function (err) {
-      //   if (err) self._debug('experienced error', err.stack)
-      // }
-    )
+    this._connectWire(recipient, wires[recipient])
+  }, this)
+}
 
-    wire.uncork()
-  })
+Client.prototype._connectWire = function (recipient, wire) {
+  pump(
+    wire,
+    utils.encoder({ to: recipient }),
+    this._socket
+    // ,
+    // function (err) {
+    //   if (err) self._debug('experienced error', err.stack)
+    // }
+  )
+
+  wire.uncork()
 }
 
 Client.prototype._onDisconnect = function (err) {
