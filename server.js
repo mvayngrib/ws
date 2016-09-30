@@ -2,7 +2,6 @@
 const parseUrl = require('url').parse
 const querystring = require('querystring')
 const EventEmitter = require('events').EventEmitter
-const eos = require('end-of-stream')
 const pump = require('pump')
 const websocket = require('websocket-stream')
 const reemit = require('re-emitter')
@@ -17,7 +16,6 @@ const DEFAULT_WIRE_OPTS = { plaintext: true }
 module.exports = function createServer (opts) {
   const wsServer = websocket.createServer(opts, onconnection)
   const streams = {}
-  const proxies = {}
   const manager = createManager()
   const ee = new EventEmitter()
 
@@ -55,7 +53,7 @@ module.exports = function createServer (opts) {
   return ee
 
   function onconnection (stream) {
-    stream.on('error', function () {
+    stream.on('error', function (err) {
       debug('stream experienced error', err)
       stream.end()
     })
@@ -101,7 +99,6 @@ module.exports = function createServer (opts) {
     )
 
     wire.uncork()
-    wire.resume()
     reemit(manager, ee, createManager.WIRE_EVENTS)
     ee.emit('connect', from)
   }

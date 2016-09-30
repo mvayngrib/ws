@@ -5,7 +5,6 @@ const schema = protobufs.schema
 
 exports.encoder = function encoder (opts) {
   return through(function (data, enc, cb) {
-    console.log('encoding')
     var props = extend({ data: data }, opts)
     var packet = protobufs.encode(schema.Packet, props)
     cb(null, packet)
@@ -14,7 +13,6 @@ exports.encoder = function encoder (opts) {
 
 exports.decoder = function decoder () {
   return through.obj(function (data, enc, cb) {
-    console.log('decoding')
     var result = protobufs.decode(data)
     cb(null, result)
   })

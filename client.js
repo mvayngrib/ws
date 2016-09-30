@@ -1,19 +1,21 @@
 
 const EventEmitter = require('events').EventEmitter
 const util = require('util')
-const eos = require('end-of-stream')
-const ws = require('websocket-stream/stream')
 const pump = require('pump')
 const through = require('through2')
 const reemit = require('re-emitter')
 const protobufs = require('sendy-protobufs').ws
 const debug = require('debug')('tradle:ws:client')
 const Wire = require('@tradle/wire')
-const createBackoff = require('backoff')
 const duplexify = require('duplexify')
+const reconnect = require('reconnect-ws')
 const utils = require('./utils')
 const createManager = require('./manager')
 const schema = protobufs.schema
+const reconnectOpts = {
+  initialDelay: 1e3,
+  maxDelay: 30e3
+}
 
 module.exports = Client
 
@@ -27,22 +29,25 @@ function Client (opts) {
 
   this._opts = opts
   this._url = opts.url
-  this._openSocket = this._openSocket.bind(this)
-  this._onSocketClose = this._onSocketClose.bind(this)
   this._manager = createManager()
-  this._manager._createWire = function () {
-    return self._createWire.apply(self, arguments)
+  this._manager._createWire = function (recipient) {
+    const wire = self._createWire(recipient)
+    if (!self._socket) wire.cork()
+    return wire
   }
 
   reemit(this._manager, this, createManager.WIRE_EVENTS)
-
-  this._backoff = opts.backoff || createBackoff.exponential({
-    initialDelay: 200,
-    maxDelay: 10000
-  })
-
-  this._backoff.on('ready', this._openSocket)
-  this._openSocket()
+  this._connector = reconnect(reconnectOpts, this._setStream.bind(this))
+    .connect(opts.url)
+    .on('connect', function () {
+      self._debug('connected')
+      self.emit('connect')
+    })
+    .on('disconnect', this._onDisconnect.bind(this))
+    .on('error', function (err) {
+      self._debug('error in websocket stream', err)
+      self._socket.end()
+    })
 }
 
 util.inherits(Client, EventEmitter)
@@ -57,35 +62,11 @@ Client.prototype._createWire = function () {
 }
 
 Client.prototype.send = function (recipient, msg, cb) {
-  this._setupWire(recipient)
   this._manager.send(recipient, msg, cb)
 }
 
 Client.prototype.ack = function (recipient, msg) {
   this._manager.ack(recipient, msg)
-}
-
-Client.prototype._setupWire = function (recipient) {
-  const self = this
-  if (this._manager.hasWire(recipient)) return
-
-  const wire = this._manager.wire(recipient).resume()
-  // wire.on('pause', () => console.log('wire paused'))
-  // wire.on('data', data => console.log('sending', data.length))
-  // wire.pause()
-  pump(
-    wire,
-    utils.encoder({ to: recipient }),
-    this._socket || this._getProxy()
-  )
-
-  wire.uncork()
-}
-
-Client.prototype._getProxy = function () {
-  if (!this._proxy) this._proxy = duplexify()
-
-  return this._proxy
 }
 
 Client.prototype._debug = function () {
@@ -94,39 +75,43 @@ Client.prototype._debug = function () {
   return debug.apply(null, arguments)
 }
 
-Client.prototype._openSocket = function () {
+Client.prototype._setStream = function (stream) {
   const self = this
-  if (this._socket) this._debug('reconnecting')
 
-  this._debug('connecting to ' + this._url)
-  this._socket = ws(this._url)
-  if (this._proxy) {
-    this._proxy.setReadable(this._socket)
-    this._proxy.setWritable(this._socket)
-  }
-
-  this._socket.on('error', function () {
-    self._socket.end()
-  })
-
-  this._socket.once('connect', function () {
-    self.emit('connect')
-  })
-
+  this._socket = stream
+  this._debug('connected to ' + this._url)
   pump(
-    this._socket,
+    stream,
     utils.decoder(),
     through.obj(function (packet, enc, cb) {
-      self._setupWire(packet.from)
       self._manager.wire(packet.from).write(packet.data)
       cb()
-    }),
-    this._onSocketClose
+    })
+    // ,
+    // function (err) {
+    //   if (err) self._debug('experienced error', err.stack)
+    // }
   )
+
+  const wires = this._manager.wires()
+  Object.keys(wires).forEach(function (recipient) {
+    const wire = wires[recipient]
+    pump(
+      wire,
+      utils.encoder({ to: recipient }),
+      stream
+      // ,
+      // function (err) {
+      //   if (err) self._debug('experienced error', err.stack)
+      // }
+    )
+
+    wire.uncork()
+  })
 }
 
-Client.prototype._onSocketClose = function (err) {
-  if (err) this._debug('experienced error ' + JSON.stringify(err))
+Client.prototype._onDisconnect = function (err) {
+  if (err) this._debug('experienced error', err)
   if (this._destroyed) return
   if (this._destroying) {
     this._debug('destroyed')
@@ -137,8 +122,6 @@ Client.prototype._onSocketClose = function (err) {
 
   debug('backing off before reconnecting')
   this._socket = null
-  this._proxy = null
-  this._backoff.backoff()
   this._manager.reset()
   this.emit('disconnect')
 }
@@ -150,5 +133,5 @@ Client.prototype.destroy = function (cb) {
   if (cb) this.once('destroy', cb)
 
   this._manager.destroy()
-  this._socket.end()
+  this._connector.disconnect()
 }

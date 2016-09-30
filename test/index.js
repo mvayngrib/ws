@@ -6,7 +6,7 @@ var WSClient = require('../client')
 var strings = require('./fixtures/strings')
 var BASE_PORT = 22222
 
-;[false].forEach(function (goodConnection) {
+;[true, false].forEach(function (goodConnection) {
   test(goodConnection ? 'good connection' : 'bad connection', function (t) {
     t.timeoutAfter(90000)
     var port = BASE_PORT++

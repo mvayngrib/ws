@@ -2,9 +2,10 @@ const EventEmitter = require('events').EventEmitter
 const eos = require('end-of-stream')
 const debug = require('debug')('tradle:ws:manager')
 const pump = require('pump')
+const extend = require('xtend')
 const utils = require('./utils')
 const noop = function () {}
-const WIRE_EVENTS = ['request', 'message', 'handshake', 'ack', 'error']
+const WIRE_EVENTS = ['request', 'message', 'handshake', 'ack']
 
 exports = module.exports = createManager
 exports.WIRE_EVENTS = WIRE_EVENTS
@@ -36,6 +37,10 @@ function createManager (opts) {
 
   manager.hasWire = function (recipient) {
     return recipient in wires
+  }
+
+  manager.wires = function () {
+    return extend(wires)
   }
 
   manager.wire = function (recipient) {
