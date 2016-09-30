@@ -1,13 +1,33 @@
 
 var path = require('path')
 var test = require('tape')
+var Wire = require('@tradle/wire')
+var nacl = Wire.nacl
 var WebSocketServer = require('../server')
 var WSClient = require('../client')
 var strings = require('./fixtures/strings')
 var BASE_PORT = 22222
+const names = ['bill', 'ted']
+const users = names.map(name => {
+  return {
+    identity: nacl.box.keyPair(),
+    name: name
+  }
+})
 
-;[true, false].forEach(function (goodConnection) {
-  test(goodConnection ? 'good connection' : 'bad connection', function (t) {
+const billInfo = users[0]
+const billIdentifier = new Buffer(billInfo.identity.publicKey).toString('hex')
+const tedInfo = users[1]
+const tedIdentifier = new Buffer(tedInfo.identity.publicKey).toString('hex')
+
+;[
+  { disconnect: false, encrypt: true },
+  { disconnect: false, encrypt: false },
+  { disconnect: true, encrypt: true },
+  { disconnect: true, encrypt: false }
+].forEach(function (settings) {
+  var cxnType = settings.disconnect ? 'good' : 'bad'
+  test(`{cxnType} connection, encrypted: ${settings.encrypt}`, function (t) {
     t.timeoutAfter(90000)
     var port = BASE_PORT++
 
@@ -15,14 +35,29 @@ var BASE_PORT = 22222
     var ted = new WebSocketServer({
       port: port,
       path: wsPath,
-      identifier: 'ted'
+      identifier: tedIdentifier
     })
 
     var serverURL = 'http://127.0.0.1:' + port + path.join('/', wsPath)
     var bill = new WSClient({
-      wireOpts: { plaintext: true },
-      url: serverURL + '?from=bill'
+      url: serverURL + '?from=' + new Buffer(billInfo.identity.publicKey).toString('hex')
     })
+
+    if (settings.encrypt) {
+      bill._createWire = function (recipient) {
+        return new Wire({
+          identity: billInfo.identity,
+          theirIdentity: new Buffer(recipient, 'hex')
+        })
+      }
+
+      ted._createWire = function (recipient) {
+        return new Wire({
+          identity: tedInfo.identity,
+          theirIdentity: new Buffer(recipient, 'hex')
+        })
+      }
+    }
 
     var toTed = toBuffer({
       dear: 'ted',
@@ -30,7 +65,7 @@ var BASE_PORT = 22222
       seq: 1
     })
 
-    bill.send('ted', toTed, function () {
+    bill.send(tedIdentifier, toTed, function () {
       t.pass('bill->ted delivery confirmed')
       finish()
     })
@@ -41,14 +76,14 @@ var BASE_PORT = 22222
       seq: 1
     })
 
-    ted.send('bill', toBill, function () {
+    ted.send(billIdentifier, toBill, function () {
       t.pass('ted->bill delivery confirmed')
       finish()
     })
 
     ted.once('message', function (actual, from) {
       t.same(actual, toTed, 'ted received')
-      t.equal(from, 'bill')
+      t.equal(from, billIdentifier)
       finish()
     })
 
@@ -58,7 +93,7 @@ var BASE_PORT = 22222
 
     bill.once('message', function (actual, from) {
       t.same(actual, toBill, 'bill received')
-      t.equal(from, 'ted')
+      t.equal(from, tedIdentifier)
       finish()
     })
 
@@ -72,11 +107,9 @@ var BASE_PORT = 22222
       if (err) throw err
       if (--togo) {
         // kill bill
-        if (!goodConnection) {
-          if (bill._socket) {
-            console.log('killing bill')
-            bill._socket.end()
-          }
+        if (settings.disconnect && bill._socket) {
+          console.log('killing bill')
+          bill._socket.end()
         }
 
         return
