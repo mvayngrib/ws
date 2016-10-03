@@ -107,8 +107,19 @@ function createManager (opts) {
     callbacks[recipient][seq] = cb
     if (!queues[recipient]) queues[recipient] = []
 
-    cb._wsManagerArgs = arguments
-    queues[recipient].push(arguments)
+    const args = arguments
+    cb._wsManagerArgs = args
+    queues[recipient].push(args)
+    return function removeFromQueue () {
+      const q = queues[recipient]
+      if (!q) return
+
+      const idx = q.indexOf(args)
+      if (idx !== -1) {
+        q.splice(idx, 1)
+        return true
+      }
+    }
   }
 
   manager.destroy = function (cb) {
@@ -145,7 +156,7 @@ function createManager (opts) {
 
   function resendQueue (recipient) {
     var q = queues[recipient]
-    if (!(q &&q.length)) return
+    if (!(q && q.length)) return
 
     queues[recipient] = []
     debug('resending to ' + recipient)
