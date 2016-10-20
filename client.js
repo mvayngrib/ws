@@ -51,7 +51,9 @@ function Client (opts) {
     .on('disconnect', this._onDisconnect.bind(this))
     .on('error', function (err) {
       self._debug('error in websocket stream', err)
-      self._socket.end()
+      if (self._socket) {
+        self._socket.end()
+      }
     })
 }
 
