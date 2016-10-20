@@ -27,7 +27,7 @@ const tedIdentifier = new Buffer(tedInfo.identity.publicKey).toString('hex')
   { disconnect: true, encrypt: false }
 ].forEach(function (settings) {
   var cxnType = settings.disconnect ? 'good' : 'bad'
-  test(`{cxnType} connection, encrypted: ${settings.encrypt}`, function (t) {
+  test(`connection: ${cxnType}, encrypted: ${settings.encrypt}`, function (t) {
     t.timeoutAfter(90000)
     var port = BASE_PORT++
 
