@@ -3,7 +3,7 @@ const eos = require('end-of-stream')
 const debug = require('debug')('tradle:ws:manager')
 const pump = require('pump')
 const extend = require('xtend')
-const utils = require('./utils')
+const typeforce = require('typeforce')
 const noop = function () {}
 const WIRE_EVENTS = ['request', 'message', 'handshake', 'ack']
 
@@ -84,7 +84,7 @@ function createManager (opts) {
     const acks = ackCache[recipient]
     if (acks) {
       Object.keys(acks).sort(increasingNum).forEach(function (seq) {
-        manager.ack(recipient, seq)
+        manager.ack({ recipient, seq })
       })
     }
 
@@ -96,14 +96,22 @@ function createManager (opts) {
     throw new Error('overwrite this!')
   }
 
-  manager.send = function (recipient, msg, cb) {
+  manager.send = function (opts, cb) {
+    typeforce({
+      seq: typeforce.Number,
+      to: typeforce.String,
+      message: typeforce.Object
+    }, opts)
+
+    const seq = opts.seq
+    const msg = opts.message
+    const recipient = opts.to
     const wire = manager.wire(recipient)
     const buf = toBuffer(msg)
     wire.send(buf)
 
     if (!callbacks[recipient]) callbacks[recipient] = {}
 
-    const seq = Buffer.isBuffer(msg) ? utils.seq(buf) : msg.seq
     callbacks[recipient][seq] = cb
     if (!queues[recipient]) queues[recipient] = []
 
@@ -137,10 +145,14 @@ function createManager (opts) {
     if (cb) manager.once('destroy', cb)
   }
 
-  manager.ack = function (recipient, msg) {
-    const seq = msg.seq || msg
-    if (typeof seq !== 'number') throw new Error('invalid seq')
+  manager.ack = function (opts) {
+    typeforce({
+      seq: typeforce.Number,
+      to: typeforce.String
+    }, opts)
 
+    const recipient = opts.to
+    const seq = opts.seq
     const wire = wires[recipient]
     if (wire) return wire.ack(seq)
 

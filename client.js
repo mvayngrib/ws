@@ -68,12 +68,12 @@ Client.prototype._createWire = function () {
   return wire
 }
 
-Client.prototype.send = function (recipient, msg, cb) {
-  this._manager.send(recipient, msg, cb)
+Client.prototype.send = function (opts, cb) {
+  this._manager.send(opts, cb)
 }
 
-Client.prototype.ack = function (recipient, msg) {
-  this._manager.ack(recipient, msg)
+Client.prototype.ack = function (opts) {
+  this._manager.ack(opts)
 }
 
 Client.prototype._debug = function () {

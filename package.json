@@ -19,6 +19,7 @@
     "reconnect-ws": "^0.1.0",
     "sendy-protobufs": "github:tradle/sendy-protobufs",
     "through2": "^2.0.1",
+    "typeforce": "^1.8.7",
     "websocket-stream": "^3.3.0",
     "xtend": "^4.0.1"
   },

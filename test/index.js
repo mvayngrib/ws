@@ -59,24 +59,34 @@ const tedIdentifier = new Buffer(tedInfo.identity.publicKey).toString('hex')
       }
     }
 
+    var toTedSeq = 1
     var toTed = toBuffer({
       dear: 'ted',
       contents: 'sixmeg'.repeat(1000000),
-      seq: 1
+      seq: toTedSeq
     })
 
-    bill.send(tedIdentifier, toTed, function () {
+    bill.send({
+      to: tedIdentifier,
+      message: toTed,
+      seq: toTedSeq
+    }, function () {
       t.pass('bill->ted delivery confirmed')
       finish()
     })
 
+    var toBillSeq = 1
     var toBill = toBuffer({
       dear: 'bill',
       contents: 'sixmeg'.repeat(1000000),
-      seq: 1
+      seq: toBillSeq
     })
 
-    ted.send(billIdentifier, toBill, function () {
+    ted.send({
+      to: billIdentifier,
+      message: toBill,
+      seq: toBillSeq
+    }, function () {
       t.pass('ted->bill delivery confirmed')
       finish()
     })
@@ -88,7 +98,10 @@ const tedIdentifier = new Buffer(tedInfo.identity.publicKey).toString('hex')
     })
 
     ted.on('message', function (actual, from) {
-      ted.ack(from, JSON.parse(actual).seq)
+      ted.ack({
+        to: from,
+        seq: JSON.parse(actual).seq
+      })
     })
 
     bill.once('message', function (actual, from) {
@@ -98,7 +111,10 @@ const tedIdentifier = new Buffer(tedInfo.identity.publicKey).toString('hex')
     })
 
     bill.on('message', function (actual, from) {
-      bill.ack(from, JSON.parse(actual).seq)
+      bill.ack({
+        to: from,
+        seq: JSON.parse(actual).seq
+      })
     })
 
     var togo = 4 // 2 people * (send + receive)
