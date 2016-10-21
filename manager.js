@@ -84,7 +84,10 @@ function createManager (opts) {
     const acks = ackCache[recipient]
     if (acks) {
       Object.keys(acks).sort(increasingNum).forEach(function (seq) {
-        manager.ack({ recipient, seq })
+        manager.ack({
+          to: recipient,
+          seq: seq
+        })
       })
     }
 
