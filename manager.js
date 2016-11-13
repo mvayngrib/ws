@@ -1,7 +1,6 @@
 const EventEmitter = require('events').EventEmitter
 const eos = require('end-of-stream')
 const debug = require('debug')('tradle:ws:manager')
-const pump = require('pump')
 const extend = require('xtend')
 const typeforce = require('typeforce')
 const noop = function () {}
