@@ -48,6 +48,7 @@ module.exports = function createServer (opts) {
   }
 
   ee.destroy = wsServer.close.bind(wsServer)
+  reemit(manager, ee, createManager.WIRE_EVENTS)
 
   wsServer.once('close', ee.close)
   return ee
@@ -99,7 +100,6 @@ module.exports = function createServer (opts) {
     )
 
     wire.uncork()
-    reemit(manager, ee, createManager.WIRE_EVENTS)
     ee.emit('connect', from)
   }
 }
