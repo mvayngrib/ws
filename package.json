@@ -1,6 +1,6 @@
 {
   "name": "@tradle/ws",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "description": "ws client/server with @tradle/wire",
   "main": "index.js",
   "scripts": {
